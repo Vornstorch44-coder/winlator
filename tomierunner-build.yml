@@ -1,0 +1,68 @@
+name: Build TomieRunner 0.3 APK
+
+on:
+  push:
+    branches:
+      - tomierunner-0.3-build
+    paths:
+      - 'TomieRunner_patch_v0_3.zip'
+      - '.github/workflows/tomierunner-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout Winlator fork and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            'platforms;android-35' \
+            'build-tools;35.0.0' \
+            'ndk;24.0.8215888' \
+            'cmake;3.22.1'
+
+      - name: Apply TomieRunner 0.3 patch
+        shell: bash
+        run: |
+          rm -rf tomie-patch
+          mkdir -p tomie-patch
+          unzip -q TomieRunner_patch_v0_3.zip -d tomie-patch
+          python3 tomie-patch/TomieRunner_patch_v0_3/apply_tomie_runner_patch.py "$GITHUB_WORKSPACE/app"
+
+      - name: Build APK
+        shell: bash
+        run: |
+          cd app
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Prepare APK artifact
+        shell: bash
+        run: |
+          cp app/app/build/outputs/apk/debug/app-debug.apk TomieRunner-v0.3.apk
+          sha256sum TomieRunner-v0.3.apk > TomieRunner-v0.3.apk.sha256
+
+      - name: Upload TomieRunner APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TomieRunner-v0.3-APK
+          path: |
+            TomieRunner-v0.3.apk
+            TomieRunner-v0.3.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
